@@ -1,0 +1,89 @@
+name: Test Action
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  scan:
+    name: Scan (no database)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run pgspectre scan
+        uses: ./
+        with:
+          command: scan
+          format: json
+          version: '0.1.1'
+
+  audit:
+    name: Audit (with database)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: testdb
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run pgspectre audit (text)
+        uses: ./
+        with:
+          command: audit
+          db-url: 'postgres://test:test@localhost:5432/testdb?sslmode=disable'
+          version: '0.1.1'
+
+      - name: Run pgspectre audit (json)
+        uses: ./
+        with:
+          command: audit
+          db-url: 'postgres://test:test@localhost:5432/testdb?sslmode=disable'
+          format: json
+          version: '0.1.1'
+
+  sarif:
+    name: SARIF output
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: testdb
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run pgspectre audit (sarif)
+        uses: ./
+        with:
+          command: audit
+          db-url: 'postgres://test:test@localhost:5432/testdb?sslmode=disable'
+          format: sarif
+          upload-sarif: 'true'
+          version: '0.1.1'
