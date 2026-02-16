@@ -1,0 +1,119 @@
+name: pgspectre
+description: Run pgspectre — PostgreSQL schema and usage auditor. Detects drift between code and database.
+author: ppiankov
+
+branding:
+  icon: database
+  color: blue
+
+inputs:
+  command:
+    description: 'Subcommand to run: audit, check, or scan'
+    required: false
+    default: 'audit'
+  version:
+    description: 'pgspectre version to install (e.g., 0.1.0). Default: latest'
+    required: false
+    default: 'latest'
+  db-url:
+    description: 'PostgreSQL connection URL (not needed for scan)'
+    required: false
+  repo-path:
+    description: 'Path to code repository (for check/scan commands)'
+    required: false
+    default: '.'
+  format:
+    description: 'Output format: text, json, or sarif'
+    required: false
+    default: 'text'
+  fail-on:
+    description: 'Exit 2 if findings match (comma-separated types or severity, e.g., MISSING_TABLE,high)'
+    required: false
+  min-severity:
+    description: 'Show only findings at or above this severity (high, medium, low, info)'
+    required: false
+  baseline:
+    description: 'Path to baseline file (suppress known findings)'
+    required: false
+  args:
+    description: 'Additional CLI arguments'
+    required: false
+  upload-sarif:
+    description: 'Upload SARIF results to GitHub Security tab (only when format=sarif)'
+    required: false
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve version
+      id: version
+      shell: bash
+      run: |
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          TAG=$(curl -sL https://api.github.com/repos/ppiankov/pgspectre/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+        else
+          TAG="v${{ inputs.version }}"
+        fi
+        VNUM="${TAG#v}"
+        echo "tag=${TAG}" >> $GITHUB_OUTPUT
+        echo "vnum=${VNUM}" >> $GITHUB_OUTPUT
+
+    - name: Install pgspectre
+      shell: bash
+      run: |
+        VNUM=${{ steps.version.outputs.vnum }}
+        TAG=${{ steps.version.outputs.tag }}
+        ARCHIVE="pgspectre_${VNUM}_linux_amd64.tar.gz"
+        URL="https://github.com/ppiankov/pgspectre/releases/download/${TAG}/${ARCHIVE}"
+        echo "Downloading pgspectre ${VNUM}..."
+        curl -sLO "${URL}"
+        tar -xzf "${ARCHIVE}"
+        sudo mv pgspectre /usr/local/bin/
+        rm -f "${ARCHIVE}"
+        pgspectre version
+
+    - name: Run pgspectre
+      id: run
+      shell: bash
+      run: |
+        ARGS="${{ inputs.command }}"
+
+        if [ -n "${{ inputs.db-url }}" ]; then
+          ARGS="${ARGS} --db-url ${{ inputs.db-url }}"
+        fi
+
+        if [ "${{ inputs.command }}" = "check" ] || [ "${{ inputs.command }}" = "scan" ]; then
+          ARGS="${ARGS} --repo ${{ inputs.repo-path }}"
+        fi
+
+        ARGS="${ARGS} --format ${{ inputs.format }}"
+
+        if [ -n "${{ inputs.fail-on }}" ]; then
+          ARGS="${ARGS} --fail-on ${{ inputs.fail-on }}"
+        fi
+
+        if [ -n "${{ inputs.min-severity }}" ]; then
+          ARGS="${ARGS} --min-severity ${{ inputs.min-severity }}"
+        fi
+
+        if [ -n "${{ inputs.baseline }}" ]; then
+          ARGS="${ARGS} --baseline ${{ inputs.baseline }}"
+        fi
+
+        if [ -n "${{ inputs.args }}" ]; then
+          ARGS="${ARGS} ${{ inputs.args }}"
+        fi
+
+        if [ "${{ inputs.format }}" = "sarif" ]; then
+          pgspectre ${ARGS} > pgspectre-results.sarif
+        else
+          pgspectre ${ARGS}
+        fi
+
+    - name: Upload SARIF
+      if: ${{ inputs.format == 'sarif' && inputs.upload-sarif == 'true' && always() }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: pgspectre-results.sarif
+        category: pgspectre
