@@ -18,7 +18,7 @@ jobs:
         with:
           command: scan
           format: json
-          version: '0.1.1'
+          version: '0.1.2'
 
   audit:
     name: Audit (with database)
@@ -46,7 +46,7 @@ jobs:
         with:
           command: audit
           db-url: 'postgres://test:test@localhost:5432/testdb?sslmode=disable'
-          version: '0.1.1'
+          version: '0.1.2'
 
       - name: Run pgspectre audit (json)
         uses: ./
@@ -54,7 +54,7 @@ jobs:
           command: audit
           db-url: 'postgres://test:test@localhost:5432/testdb?sslmode=disable'
           format: json
-          version: '0.1.1'
+          version: '0.1.2'
 
   sarif:
     name: SARIF output
@@ -86,4 +86,4 @@ jobs:
           db-url: 'postgres://test:test@localhost:5432/testdb?sslmode=disable'
           format: sarif
           upload-sarif: 'true'
-          version: '0.1.1'
+          version: '0.1.2'
